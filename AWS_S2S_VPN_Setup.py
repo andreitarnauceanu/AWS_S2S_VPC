@@ -42,7 +42,7 @@ def save_gateway_config(vpn_conn, filename):
 
 
 def hostname_to_ip(hostname):
-    # This will return only the first returned ip address
+    # This will return only the first ip address returned by the dns server
     res = resolver.Resolver(configure=False)
     res.nameservers = ['8.8.8.8', '8.8.4.4']
     response = res.query(hostname, 'a')
@@ -60,7 +60,7 @@ def hostname_or_ip(address):
     if IP(address).iptype() == 'PUBLIC':
         return address
     else:
-        raise ValueError("Private IP address are not accepted.")
+        raise ValueError("Private IP addresses are not accepted.")
 
 def attach_VPG_to_VPC():
     # TODO Attach Virual Private Gateway to a VPC
