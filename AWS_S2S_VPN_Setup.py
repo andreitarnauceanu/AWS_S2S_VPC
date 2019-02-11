@@ -2,6 +2,7 @@
 import boto3
 import re
 import sys
+import os
 from dns import resolver
 from IPy import IP
 
@@ -62,9 +63,24 @@ def hostname_or_ip(address):
     else:
         raise ValueError("Private IP addresses are not accepted.")
 
-def attach_VPG_to_VPC():
-    # TODO Attach Virual Private Gateway to a VPC
-    pass
+def attach_vpn_gw_to_vpc(vpn_gw_id):
+    response = client.describe_vpcs(
+        Filters=[],
+        VpcIds=[],
+        DryRun=False
+    )
+    vpcs = response.get('Vpcs')
+    if len(vpcs) == 1:
+        vpc_id = vpcs[0].get('VpcId')
+    else:
+        # TODO Display a list of vpcs
+        pass
+    print("Attaching VPN gateway to VPC")
+    return client.attach_vpn_gateway(
+        VpcId=vpc_id,
+        VpnGatewayId=vpn_gw_id,
+        DryRun=False
+    )
 
 
 def main():
@@ -103,6 +119,7 @@ def main():
             ],
             DryRun=False
         )
+        # todo connect vpn_gw to vpc
         if len(check_vpn_connection.get('VpnConnections')) !=0:
             print('VPN connection already in place.')
             vpn_connection = check_vpn_connection.get('VpnConnections')[0]
@@ -114,6 +131,7 @@ def main():
                 customer_gateway.get('CustomerGateway').get('CustomerGatewayId'),
                 vpn_gateway.get('VpnGateway').get('VpnGatewayId')
         )
+        attach_vpn_gw_to_vpc(vpn_gateway.get('VpnGateway').get('VpnGatewayId'))
         save_gateway_config(vpn_connection.get('VpnConnection'), 'vpn_config.xml')
 
 
