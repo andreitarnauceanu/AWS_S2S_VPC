@@ -7,7 +7,7 @@ from dns import resolver
 from IPy import IP
 
 
-def create_customer_gateway( ip_address):
+def create_customer_gateway(ip_address):
     print("Creating Customer Gateway...")
     return client.create_customer_gateway(
         BgpAsn=65000,
@@ -63,6 +63,7 @@ def hostname_or_ip(address):
     else:
         raise ValueError("Private IP addresses are not accepted.")
 
+
 def attach_vpn_gw_to_vpc(vpn_gw_id):
     response = client.describe_vpcs(
         Filters=[],
@@ -75,6 +76,7 @@ def attach_vpn_gw_to_vpc(vpn_gw_id):
     else:
         # TODO Display a list of vpcs
         pass
+
     print("Attaching VPN gateway to VPC")
     return client.attach_vpn_gateway(
         VpcId=vpc_id,
@@ -83,11 +85,19 @@ def attach_vpn_gw_to_vpc(vpn_gw_id):
     )
 
 
+def get_att_vpc(vpn_gw_id):
+    vpc_att = client.describe_vpn_gateways(VpnGatewayIds=[vpn_gw_id, ]).get('VpnGateways')[0].get('VpcAttachments')
+    if len(vpc_att) != 0:
+        return vpc_att[0].get('State'), vpc_att[0].get('VpcId')
+    else:
+        return None, None
+
+
 def main():
     assert sys.version_info.major == 2 and sys.version_info.minor == 7, 'Wrong python version. 2.7 required'
 
     public_ipAddress = hostname_or_ip(sys.argv[1])
-
+    tags = [{'Key': 'Name', 'Value': sys.argv[1]}]
     check_customer_gateway = client.describe_customer_gateways(
         Filters=[
             {
@@ -119,18 +129,25 @@ def main():
             ],
             DryRun=False
         )
-        # todo connect vpn_gw to vpc
-        if len(check_vpn_connection.get('VpnConnections')) !=0:
+        if len(check_vpn_connection.get('VpnConnections')) != 0:
             print('VPN connection already in place.')
             vpn_connection = check_vpn_connection.get('VpnConnections')[0]
+            vpn_gw_vpc_att_state, vpn_gw_vpc_att_id = get_att_vpc(vpn_connection.get('VpnGatewayId'))
+            if vpn_gw_vpc_att_state in ['attaching', 'attached']:
+                print('VPN gateway attached to {} VPN'. format(vpn_gw_vpc_att_id))
+            else:
+                attach_vpn_gw_to_vpc(vpn_connection.get('VpnGatewayId'))
             save_gateway_config(vpn_connection, 'vpn_config.xml')
     else:
-        customer_gateway = create_customer_gateway( public_ipAddress)
+        customer_gateway = create_customer_gateway(public_ipAddress)
+        client.create_tags(Tags=tags, Resources=[customer_gateway.get('CustomerGateway').get('CustomerGatewayId')]);
         vpn_gateway = create_vpn_gateway()
+        client.create_tags(Tags=tags, Resources=[vpn_gateway.get('VpnGateway').get('VpnGatewayId')]);
         vpn_connection = create_vpn_connection(
-                customer_gateway.get('CustomerGateway').get('CustomerGatewayId'),
-                vpn_gateway.get('VpnGateway').get('VpnGatewayId')
+            customer_gateway.get('CustomerGateway').get('CustomerGatewayId'),
+            vpn_gateway.get('VpnGateway').get('VpnGatewayId')
         )
+        client.create_tags(Tags=tags, Resources=[vpn_connection.get('VpnConnection').get('VpnConnectionId')]);
         attach_vpn_gw_to_vpc(vpn_gateway.get('VpnGateway').get('VpnGatewayId'))
         save_gateway_config(vpn_connection.get('VpnConnection'), 'vpn_config.xml')
 

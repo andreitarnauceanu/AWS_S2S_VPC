@@ -175,3 +175,5 @@ fabric.properties
 vpn_config.xml
 .idea/AWS_S2S_VPC.iml
 .idea/vcs.xml
+/**-backup.txt
+/config.txt
