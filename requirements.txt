@@ -2,5 +2,6 @@ boto3
 IPy
 dnspython
 paramiko
-progressbar
-progressbar2
+xmltodict
+napalm
+pymustache

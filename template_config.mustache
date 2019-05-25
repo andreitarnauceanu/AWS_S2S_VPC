@@ -1,0 +1,27 @@
+### RouterOS does not have a consistent configuration structure from one version to an other.
+### Config generated for RouterOS 6.43.11 might not work for newer version.
+### This is just a prof of concept generated config. Use at your own risk.
+### Don't try this config on a production router.
+
+/ip ipsec proposal
+add enc-algorithms={{{ipsec_enc-algorithms}}} lifetime={{{proposal_lifetime}}} name=ipsec-{{{connection_name}}}
+
+/ip address
+add address={{{ipsec_tunnel_src_ip_address}}}/{{{network_cidr}}} interface={{{wan_interface}}}
+
+/ip firewall nat
+add action=accept chain=srcnat dst-address={{{aws_vpc_cidr}}} log-prefix="" src-address={{{local_net_cidr}}}
+add action=accept chain=srcnat dst-address={{{ipsec_tunnel_dst_ip_address}}} log-prefix="" src-address={{{ipsec_tunnel_src_ip_address}}}
+
+/ip ipsec peer
+add address={{{ipsec_tunnel_public_ip_address}}}/32 dpd-interval={{{dpd_interval}}}s dpd-maximum-failures={{{dpd_maximum_failures}}} enc-algorithm={{{ike_enc_algorithm}}} lifetime={{{peer_lifetime}}} local-address={{{local_outside_ip_address}}} nat-traversal=no secret={{{secret}}}
+
+/ip ipsec policy
+add dst-address={{{aws_vpc_cidr}}} proposal=ipsec-{{{connection_name}}} sa-dst-address={{{ipsec_tunnel_public_ip_address}}} sa-src-address={{{local_outside_ip_address}}} src-address={{{local_net_cidr}}} tunnel=yes
+add dst-address={{{ipsec_tunnel_dst_ip_address}}}/32 proposal=ipsec-{{{connection_name}}} sa-dst-address={{{ipsec_tunnel_public_ip_address}}} sa-src-address={{{local_outside_ip_address}}} src-address={{{ipsec_tunnel_src_ip_address}}}/32 tunnel=yes
+
+/routing bgp network
+add network={{{local_net_cidr}}} synchronize=no
+
+/routing bgp peer
+add hold-time=30s keepalive-time=10s name=BGP-{{{connection_name}}} remote-address={{{ipsec_tunnel_dst_ip_address}}} ttl=default

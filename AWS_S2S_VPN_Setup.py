@@ -3,6 +3,9 @@ import boto3
 import re
 import sys
 import os
+import pymustache
+import json
+import xmltodict
 from dns import resolver
 from IPy import IP
 
@@ -35,11 +38,9 @@ def create_vpn_connection(customer_gateway_id, vpn_gw_id):
     )
 
 
-def save_gateway_config(vpn_conn, filename):
+def get_gateway_config(vpn_conn):
     gateway_config = vpn_conn.get('CustomerGatewayConfiguration')
-    print("Configuration saved. (vpn_config.xml)")
-    with open(filename, 'w') as f:
-        f.write(gateway_config)
+    return json.dumps(xmltodict.parse(gateway_config), indent=2)
 
 
 def hostname_to_ip(hostname):
@@ -93,8 +94,58 @@ def get_att_vpc(vpn_gw_id):
         return None, None
 
 
+def create_config_dict(vpn_connection):
+    config = {}
+    client = boto3.client('ec2')
+    default_vpc = client.describe_vpcs(Filters=[{'Name': 'isDefault', 'Values': ['true']}]).get('Vpcs')[0]
+    vpn_connection = vpn_connection.get('vpn_connection')
+    ipsec_tunnel = vpn_connection.get('ipsec_tunnel')[0]
+    ipsec = ipsec_tunnel.get('ipsec')
+    customer_gateway = ipsec_tunnel.get('customer_gateway')
+    vpn_gateway = ipsec_tunnel.get('vpn_gateway')
+
+    config['ipsec_enc-algorithms'] = ipsec.get('encryption_protocol')
+    config['proposal_lifetime'] = ipsec.get('lifetime')
+    config['connection_name'] = vpn_connection.get('@id')
+    config['network_cidr'] = customer_gateway.get('tunnel_inside_address').get('network_cidr')
+
+    config['wan_interface'] = raw_input('Mikrotik WAN interface is: ')
+    config['aws_vpc_cidr'] = default_vpc.get('CidrBlock')
+    config['local_net_cidr'] = raw_input('Mikrotik local CIDR block is: ')
+    config['ipsec_tunnel_dst_ip_address'] = vpn_gateway.get('tunnel_inside_address').get('ip_address')
+    config['ipsec_tunnel_src_ip_address'] = customer_gateway.get('tunnel_inside_address').get('ip_address')
+    config['ipsec_tunnel_public_ip_address'] = vpn_gateway.get('tunnel_outside_address').get('ip_address')
+    config['dpd_interval'] = ipsec.get('dead_peer_detection').get('interval')
+    config['dpd_maximum_failures'] = ipsec.get('dead_peer_detection').get('retries')
+    config['ike_enc_algorithm'] = ipsec_tunnel.get('ike').get('encryption_protocol')
+    config['peer_lifetime'] = ipsec_tunnel.get('ike').get('lifetime')
+    config['local_outside_ip_address'] = customer_gateway.get('tunnel_outside_address').get('ip_address')
+    config['secret'] = ipsec_tunnel.get('ike').get('pre_shared_key')
+    config['hold_time'] = vpn_gateway.get('bgp').get('hold_time')
+    return config
+
+
+def create_vpn_config(vpn_config, template_filename):
+    template_config = open(template_filename, 'r').read()
+    import pdb; pdb.set_trace()
+    config = pymustache.render(template_config, create_config_dict(json.loads(vpn_config)))
+    print("Configuration saved. (vpn_config.txt)")
+    with open('vpn_config.txt', 'w') as f:
+        f.write(config)
+
+
 def main():
     assert sys.version_info.major == 2 and sys.version_info.minor == 7, 'Wrong python version. 2.7 required'
+    assert len(sys.argv) == 2, 'Wrong arguments. Ex. AWS_S2S_VPN_Setup.py example.com'
+
+    identity = boto3.client('sts').get_caller_identity()
+    account_id = identity.get('Account')
+    username = identity.get('Arn').split('/')[1]
+    print('AWS Account id: %s \nUsername: %s' % (account_id, username))
+    print('Make sure you using the right credentials!')
+    answer = str(raw_input('Continue? y/N '))
+    if answer not in ['y', 'Y']:
+        exit(0)
 
     public_ipAddress = hostname_or_ip(sys.argv[1])
     tags = [{'Key': 'Name', 'Value': sys.argv[1]}]
@@ -134,10 +185,11 @@ def main():
             vpn_connection = check_vpn_connection.get('VpnConnections')[0]
             vpn_gw_vpc_att_state, vpn_gw_vpc_att_id = get_att_vpc(vpn_connection.get('VpnGatewayId'))
             if vpn_gw_vpc_att_state in ['attaching', 'attached']:
-                print('VPN gateway attached to {} VPN'. format(vpn_gw_vpc_att_id))
+                print('VPN gateway attached to {}'. format(vpn_gw_vpc_att_id))
             else:
                 attach_vpn_gw_to_vpc(vpn_connection.get('VpnGatewayId'))
-            save_gateway_config(vpn_connection, 'vpn_config.xml')
+            vpn_config = get_gateway_config(vpn_connection)
+            create_vpn_config(vpn_config, 'template_config.mustache')
     else:
         customer_gateway = create_customer_gateway(public_ipAddress)
         client.create_tags(Tags=tags, Resources=[customer_gateway.get('CustomerGateway').get('CustomerGatewayId')]);
@@ -149,10 +201,12 @@ def main():
         )
         client.create_tags(Tags=tags, Resources=[vpn_connection.get('VpnConnection').get('VpnConnectionId')]);
         attach_vpn_gw_to_vpc(vpn_gateway.get('VpnGateway').get('VpnGatewayId'))
-        save_gateway_config(vpn_connection.get('VpnConnection'), 'vpn_config.xml')
+        vpn_config = get_gateway_config(vpn_connection.get('VpnConnection'))
+        create_vpn_config(vpn_config, 'template_config.mustache')
 
 
 if __name__ == "__main__":
+
     client = boto3.client(
         'ec2',
         region_name='us-east-1',
