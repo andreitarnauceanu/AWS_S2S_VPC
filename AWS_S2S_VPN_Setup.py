@@ -127,7 +127,6 @@ def create_config_dict(vpn_connection):
 
 def create_vpn_config(vpn_config, template_filename):
     template_config = open(template_filename, 'r').read()
-    import pdb; pdb.set_trace()
     config = pymustache.render(template_config, create_config_dict(json.loads(vpn_config)))
     print("Configuration saved. (vpn_config.txt)")
     with open('vpn_config.txt', 'w') as f:
@@ -208,9 +207,9 @@ def main():
 if __name__ == "__main__":
 
     client = boto3.client(
-        'ec2',
-        region_name='us-east-1',
-        aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
-        aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY']
-    )
+        'ec2') #,
+    #     region_name='us-east-1',
+    #     aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+    #     aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY']
+    # )
     main()
